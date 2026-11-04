@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>나만의 영화 티어리스트</title>
+    <style>
+        :root {
+            --red-point: #ff4d4d;
+            --yellow-point: #ffcc00;
+            --blue-point: #3399ff;
+            --bg-color: #1a1a1a;
+            --card-bg: #2d2d2d;
+            --text-color: #ffffff;
+        }
+
+        body {
+            font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, system-ui, Roboto, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            margin: 0;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1000px;
+            margin: 0 auto;
+        }
+
+        header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+
+        .api-setup, .search-box {
+            background: var(--card-bg);
+            padding: 15px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        input {
+            flex: 1;
+            padding: 10px;
+            border-radius: 5px;
+            border: 1px solid #444;
+            background: #3d3d3d;
+            color: white;
+            min-width: 200px;
+        }
+
+        button {
+            padding: 10px 20px;
+            border-radius: 5px;
+            border: none;
+            background: #e50914;
+            color: white;
+            cursor: pointer;
+            font-weight: bold;
+        }
+
+        button:hover { background: #b20710; }
+
+        .tier-section {
+            margin-bottom: 30px;
+        }
+
+        .tier-row {
+            display: flex;
+            align-items: center;
+            background: #252525;
+            border-radius: 8px;
+            margin-bottom: 15px;
+            min-height: 180px;
+            overflow: hidden;
+        }
+
+        .tier-label {
+            width: 100px;
+            min-width: 100px;
+            height: 180px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-size: 1.1rem;
+            text-align: center;
+            padding: 10px;
+            box-sizing: border-box;
+        }
+
+        .tier-red { background-color: var(--red-point); color: black; }
+        .tier-yellow { background-color: var(--yellow-point); color: black; }
+        .tier-blue { background-color: var(--blue-point); color: black; }
+        .tier-none { background-color: #444; color: white; }
+
+        .movie-list {
+            display: flex;
+            gap: 15px;
+            padding: 15px;
+            overflow-x: auto;
+            scrollbar-width: thin;
+            flex: 1;
+        }
+
+        .movie-list::-webkit-scrollbar { height: 6px; }
+        .movie-list::-webkit-scrollbar-thumb { background: #555; border-radius: 10px; }
+
+        .movie-card {
+            min-width: 110px;
+            width: 110px;
+            position: relative;
+            transition: transform 0.2s;
+        }
+
+        .movie-card:hover { transform: scale(1.05); }
+
+        .movie-card img {
+            width: 100%;
+            border-radius: 5px;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.5);
+        }
+
+        .movie-controls {
+            margin-top: 5px;
+            display: flex;
+            flex-direction: column;
+            gap: 3px;
+        }
+
+        select {
+            font-size: 0.75rem;
+            padding: 2px;
+            background: #444;
+            color: white;
+            border: none;
+            border-radius: 3px;
+        }
+
+        .del-btn {
+            font-size: 0.7rem;
+            background: #666;
+            padding: 2px;
+        }
+
+        @media (max-width: 600px) {
+            .tier-row { flex-direction: column; align-items: stretch; height: auto; }
+            .tier-label { width: 100%; height: 40px; min-height: 40px; }
+            .movie-list { padding: 10px; }
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <header>
+        <h1>🎬 영화 티어리스트</h1>
+    </header>
+
+    <div class="api-setup">
+        <input type="password" id="apiKey" placeholder="TMDB API Key를 입력하세요">
+        <button onclick="saveApiKey()">키 저장</button>
+    </div>
+
+    <div class="search-box">
+        <input type="text" id="movieInput" placeholder="영화 제목을 입력하세요...">
+        <button onclick="searchMovie()">추가</button>
+    </div>
+
+    <div id="tiers">
+        <!-- 미분류 -->
+        <div class="tier-section">
+            <div class="tier-row">
+                <div class="tier-label tier-none">미분류</div>
+                <div class="movie-list" id="tier-none"></div>
+            </div>
+        </div>
+
+        <!-- 인생 영화 -->
+        <div class="tier-section">
+            <div class="tier-row">
+                <div class="tier-label tier-red">인생 영화</div>
+                <div class="movie-list" id="tier-life"></div>
+            </div>
+        </div>
+
+        <!-- 추천함 -->
+        <div class="tier-section">
+            <div class="tier-row">
+                <div class="tier-label tier-yellow">추천함</div>
+                <div class="movie-list" id="tier-recommend"></div>
+            </div>
+        </div>
+
+        <!-- 보통 -->
+        <div class="tier-section">
+            <div class="tier-row">
+                <div class="tier-label tier-blue">보통</div>
+                <div class="movie-list" id="tier-normal"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    let movies = JSON.parse(localStorage.getItem('myMovies')) || [];
+    const apiKeyInput = document.getElementById('apiKey');
+
+    // 초기 로드
+    window.onload = () => {
+        const savedKey = localStorage.getItem('tmdbApiKey');
+        if (savedKey) apiKeyInput.value = savedKey;
+        renderMovies();
+    };
+
+    function saveApiKey() {
+        localStorage.setItem('tmdbApiKey', apiKeyInput.value);
+        alert('API 키가 저장되었습니다.');
+    }
+
+    async function searchMovie() {
+        const title = document.getElementById('movieInput').value;
+        const key = apiKeyInput.value;
+
+        if (!key) return alert('API 키를 먼저 입력해주세요.');
+        if (!title) return alert('영화 제목을 입력해주세요.');
+
+        try {
+            const res = await fetch(`https://api.themoviedb.org/3/search/movie?api_key=${key}&query=${encodeURIComponent(title)}&language=ko-KR`);
+            const data = await res.json();
+
+            if (data.results && data.results.length > 0) {
+                const movie = data.results[0];
+                const newMovie = {
+                    id: Date.now(),
+                    tmdbId: movie.id,
+                    title: movie.title,
+                    poster: movie.poster_path ? `https://image.tmdb.org/t/p/w200${movie.poster_path}` : 'https://via.placeholder.com/200x300?text=No+Image',
+                    tier: 'none'
+                };
+                movies.push(newMovie);
+                saveAndRender();
+                document.getElementById('movieInput').value = '';
+            } else {
+                alert('검색 결과가 없습니다.');
+            }
+        } catch (err) {
+            alert('데이터를 가져오는 중 오류가 발생했습니다.');
+        }
+    }
+
+    function moveTier(id, newTier) {
+        movies = movies.map(m => m.id === id ? { ...m, tier: newTier } : m);
+        saveAndRender();
+    }
+
+    function deleteMovie(id) {
+        if (confirm('정말 삭제하시겠습니까?')) {
+            movies = movies.filter(m => m.id !== id);
+            saveAndRender();
+        }
+    }
+
+    function saveAndRender() {
+        localStorage.setItem('myMovies', JSON.stringify(movies));
+        renderMovies();
+    }
+
+    function renderMovies() {
+        const containers = {
+            none: document.getElementById('tier-none'),
+            life: document.getElementById('tier-life'),
+            recommend: document.getElementById('tier-recommend'),
+            normal: document.getElementById('tier-normal')
+        };
+
+        // 초기화
+        Object.values(containers).forEach(c => c.innerHTML = '');
+
+        movies.forEach(movie => {
+            const card = document.createElement('div');
+            card.className = 'movie-card';
+            card.innerHTML = `
+                <img src="${movie.poster}" alt="${movie.title}">
+                <div class="movie-controls">
+                    <select onchange="moveTier(${movie.id}, this.value)">
+                        <option value="none" ${movie.tier === 'none' ? 'selected' : ''}>미분류</option>
+                        <option value="life" ${movie.tier === 'life' ? 'selected' : ''}>인생 영화</option>
+                        <option value="recommend" ${movie.tier === 'recommend' ? 'selected' : ''}>추천함</option>
+                        <option value="normal" ${movie.tier === 'normal' ? 'selected' : ''}>보통</option>
+                    </select>
+                    <button class="del-btn" onclick="deleteMovie(${movie.id})">삭제</button>
+                </div>
+            `;
+            containers[movie.tier].appendChild(card);
+        });
+    }
+</script>
+
+</body>
+</html>

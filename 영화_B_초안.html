@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>🎬 영화 티어리스트</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'Apple SD Gothic Neo', 'Malgun Gothic', sans-serif;
+    background: #1a1a2e; color: #eee; padding: 16px;
+  }
+  h1 { text-align: center; margin-bottom: 16px; font-size: 1.5rem; }
+
+  /* 입력부 */
+  .controls {
+    display: flex; flex-direction: column; gap: 8px;
+    max-width: 600px; margin: 0 auto 24px;
+  }
+  .controls input {
+    padding: 10px; border: none; border-radius: 6px; font-size: 1rem;
+  }
+  .controls button {
+    padding: 10px; border: none; border-radius: 6px;
+    background: #e94560; color: #fff; font-size: 1rem; cursor: pointer;
+  }
+  .controls button:hover { background: #ff5e7a; }
+  .msg { text-align: center; min-height: 20px; color: #ffd369; font-size: 0.9rem; }
+
+  /* 티어 영역 */
+  .tier {
+    margin-bottom: 16px; border-radius: 8px; overflow: hidden;
+    background: #16213e;
+  }
+  .tier-label {
+    padding: 10px 14px; font-weight: bold; font-size: 1.1rem;
+    border-left: 8px solid var(--color);
+  }
+  .tier-list {
+    display: flex; gap: 10px; padding: 12px;
+    overflow-x: auto; -webkit-overflow-scrolling: touch;
+    min-height: 120px;
+  }
+  /* 카드 */
+  .card {
+    flex: 0 0 auto; width: 110px; background: #0f3460;
+    border-radius: 6px; overflow: hidden; position: relative;
+  }
+  .card img { width: 100%; height: 150px; object-fit: cover; display: block; background:#333; }
+  .card .title { font-size: 0.75rem; padding: 4px; height: 36px; overflow: hidden; }
+  .card select { width: 100%; font-size: 0.7rem; border: none; padding: 2px; }
+  .card .del {
+    position: absolute; top: 4px; right: 4px;
+    background: rgba(0,0,0,0.6); color: #fff; border: none;
+    border-radius: 50%; width: 22px; height: 22px; cursor: pointer;
+  }
+</style>
+</head>
+<body>
+<h1>🎬 영화 티어리스트</h1>
+
+<div class="controls">
+  <input id="apiKey" type="text" placeholder="TMDB API 키를 입력하세요">
+  <input id="search" type="text" placeholder="영화 제목 검색 후 Enter">
+  <button id="addBtn">검색 후 추가</button>
+  <div class="msg" id="msg"></div>
+</div>
+
+<div id="tiers"></div>
+
+<script>
+  // 티어 정의 (id, 라벨, 색상)
+  const TIERS = [
+    { id: 'uncat',  label: '미분류',     color: '#888888' },
+    { id: 'best',   label: '인생 영화',  color: '#e63946' }, // 빨강
+    { id: 'good',   label: '추천함',     color: '#ffd60a' }, // 노랑
+    { id: 'normal', label: '보통',       color: '#4895ef' }  // 파랑
+  ];
+
+  const STORAGE_KEY = 'movieTierData';
+  const API_KEY_STORAGE = 'tmdbApiKey';
+
+  // 저장된 영화 목록 불러오기
+  let movies = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
+
+  const msgEl = document.getElementById('msg');
+  const apiKeyEl = document.getElementById('apiKey');
+  const searchEl = document.getElementById('search');
+
+  // 저장된 API 키 복원
+  apiKeyEl.value = localStorage.getItem(API_KEY_STORAGE) || '';
+  apiKeyEl.addEventListener('input', () => {
+    localStorage.setItem(API_KEY_STORAGE, apiKeyEl.value.trim());
+  });
+
+  // 안내 메시지 표시
+  function showMsg(text) { msgEl.textContent = text; }
+
+  // 화면 전체 다시 그리기
+  function render() {
+    const container = document.getElementById('tiers');
+    container.innerHTML = '';
+    TIERS.forEach(tier => {
+      const box = document.createElement('div');
+      box.className = 'tier';
+      box.innerHTML = `
+        <div class="tier-label" style="--color:${tier.color}; color:${tier.color}">
+          ${tier.label}
+        </div>
+        <div class="tier-list" id="list-${tier.id}"></div>`;
+      container.appendChild(box);
+    });
+    // 카드 배치
+    movies.forEach(m => {
+      const list = document.getElementById('list-' + m.tier);
+      if (list) list.appendChild(createCard(m));
+    });
+  }
+
+  // 영화 카드 생성
+  function createCard(m) {
+    const card = document.createElement('div');
+    card.className = 'card';
+    // 포스터 없을 때 대체 텍스트
+    const poster = m.poster
+      ? `<img src="https://image.tmdb.org/t/p/w200${m.poster}" alt="${m.title}">`
+      : `<img alt="이미지 없음">`;
+    // 티어 이동 드롭다운 옵션
+    const options = TIERS.map(t =>
+      `<option value="${t.id}" ${t.id === m.tier ? 'selected' : ''}>${t.label}</option>`
+    ).join('');
+
+    card.innerHTML = `
+      ${poster}
+      <div class="title">${m.title}</div>
+      <select>${options}</select>
+      <button class="del">×</button>`;
+
+    // 티어 이동
+    card.querySelector('select').addEventListener('change', e => {
+      m.tier = e.target.value;
+      save(); render();
+    });
+    // 개별 삭제
+    card.querySelector('.del').addEventListener('click', () => {
+      movies = movies.filter(x => x.id !== m.id);
+      save(); render();
+    });
+    return card;
+  }
+
+  // 저장
+  function save() {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(movies));
+  }
+
+  // 검색 후 추가
+  async function addMovie() {
+    const apiKey = apiKeyEl.value.trim();
+    const query = searchEl.value.trim();
+
+    // 예외 처리: API 키 미입력
+    if (!apiKey) { showMsg('⚠️ TMDB API 키를 먼저 입력해주세요.'); return; }
+    // 예외 처리: 검색어 미입력
+    if (!query) { showMsg('⚠️ 영화 제목을 입력해주세요.'); return; }
+
+    showMsg('🔍 검색 중...');
+    try {
+      const url = `https://api.themoviedb.org/3/search/movie?api_key=${apiKey}&query=${encodeURIComponent(query)}&language=ko-KR`;
+      const res = await fetch(url);
+      if (!res.ok) { showMsg('⚠️ API 요청 실패 (키가 올바른지 확인해주세요).'); return; }
+      const data = await res.json();
+
+      // 예외 처리: 검색 결과 없음
+      if (!data.results || data.results.length === 0) {
+        showMsg('😢 검색 결과가 없습니다.'); return;
+      }
+
+      // 첫 번째 결과 자동 추가
+      const first = data.results[0];
+      movies.push({
+        id: Date.now(),              // 고유 id
+        title: first.title,
+        poster: first.poster_path,   // null일 수 있음
+        tier: 'uncat'                // 미분류로 추가
+      });
+      save(); render();
+      showMsg(`✅ "${first.title}" 추가 완료!`);
+      searchEl.value = '';
+    } catch (err) {
+      showMsg('⚠️ 네트워크 오류가 발생했습니다.');
+    }
+  }
+
+  // 이벤트 연결
+  document.getElementById('addBtn').addEventListener('click', addMovie);
+  searchEl.addEventListener('keydown', e => { if (e.key === 'Enter') addMovie(); });
+
+  // 첫 렌더링
+  render();
+</script>
+</body>
+</html>
